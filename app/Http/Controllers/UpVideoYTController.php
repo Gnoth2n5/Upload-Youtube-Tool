@@ -6,11 +6,13 @@ use App\Http\Service\NotificationService;
 use App\Models\UpVideoYT;
 use Illuminate\Http\Request;
 use App\Models\GoogleToken;
+use Illuminate\Support\Facades\Storage;
 use Google\Client as GoogleClient;
 use Google\Service\YouTube;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Google\Http\MediaFileUpload;
+use Google\Service\YouTube\Video;
 
 
 class UpVideoYTController extends Controller
@@ -51,7 +53,7 @@ class UpVideoYTController extends Controller
         }
 
         // tạo service youtube
-        $youtube = new YouTube($client);
+        $youtube = new Video($client);
 
         // Cấu hình video upload
         $snippet = new YouTube\VideoSnippet();
@@ -69,7 +71,10 @@ class UpVideoYTController extends Controller
 
         if ($req->hasFile('video')) {
             // Xử lý file video từ input
-            $videoPath = $req->file('video')->path();
+            $file = $req->file('video');
+            Storage::disk('local')->put('public/videos', $file);
+            $videoPath = Storage::url('public/videos/' . $file->hashName());
+
         } else {
             NotificationService::sendNotification('error', 'Failed to upload video to server');
             return redirect()->route('dashboard');
@@ -79,6 +84,8 @@ class UpVideoYTController extends Controller
         // Tải lên video với chunk size 1MB
         $chunkSizeBytes = 1 * 1024 * 1024;
         $client->setDefer(true);
+
+        // dd($videoPath);
 
         // Tạo yêu cầu tải video lên
         $insertReq = $youtube->videos->insert(
@@ -91,16 +98,20 @@ class UpVideoYTController extends Controller
             ]
         );
 
+        // dd($insertReq);
+
         // Tạo đối tượng MediaFileUpload
         $media = new MediaFileUpload(
             $client,
             $insertReq,
-            'video/*',
+            'video/mp4',
             null,
             true,
             $chunkSizeBytes
         );
         $media->setFileSize(filesize($videoPath));
+
+        // dd($media);
 
         // Xử lý upload video
         $status = false;
