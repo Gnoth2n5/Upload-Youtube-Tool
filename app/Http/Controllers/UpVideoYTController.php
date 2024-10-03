@@ -47,13 +47,15 @@ class UpVideoYTController extends Controller
                 'access_token' => $newToken['access_token'],
                 'expires_at' => Carbon::now()->addSeconds($newToken['expires_in']),
             ]);
+
+            $client->setAccessToken($newToken['access_token']);
         } else {
             // set token hiện tại
             $client->setAccessToken($googleToken->access_token);
         }
 
         // tạo service youtube
-        $youtube = new Video($client);
+        $youtube = new Youtube($client);
 
         // Cấu hình video upload
         $snippet = new YouTube\VideoSnippet();
@@ -65,41 +67,28 @@ class UpVideoYTController extends Controller
         $status = new YouTube\VideoStatus();
         $status->setPrivacyStatus('public'); // Tùy chỉnh quyền riêng tư
 
-        $video = new YouTube\Video();
+        $video = new Video();
         $video->setSnippet($snippet);
         $video->setStatus($status);
 
         if ($req->hasFile('video')) {
             // Xử lý file video từ input
             $file = $req->file('video');
-            Storage::disk('local')->put('public/videos', $file);
-            $videoPath = Storage::url('public/videos/' . $file->hashName());
-
+            $videoPath = $file->path();
         } else {
             NotificationService::sendNotification('error', 'Failed to upload video to server');
             return redirect()->route('dashboard');
         }
+
+        // dd($videoPath);
 
 
         // Tải lên video với chunk size 1MB
         $chunkSizeBytes = 1 * 1024 * 1024;
         $client->setDefer(true);
 
-        // dd($videoPath);
-
-        // Tạo yêu cầu tải video lên
-        $insertReq = $youtube->videos->insert(
-            'status,snippet',
-            $video,
-            [
-                'data' => file_get_contents($videoPath),
-                'mimeType' => 'video/*',
-                'uploadType' => 'resumable',
-            ]
-        );
-
-        // dd($insertReq);
-
+        /** @var \Psr\Http\Message\RequestInterface $insertRequest */
+        $insertReq = $youtube->videos->insert('status,snippet', $video);
         // Tạo đối tượng MediaFileUpload
         $media = new MediaFileUpload(
             $client,
@@ -110,8 +99,6 @@ class UpVideoYTController extends Controller
             $chunkSizeBytes
         );
         $media->setFileSize(filesize($videoPath));
-
-        // dd($media);
 
         // Xử lý upload video
         $status = false;
@@ -135,6 +122,6 @@ class UpVideoYTController extends Controller
         fclose($handle);
         $client->setDefer(false);
 
-        redirect()->route('dashboard');
+        return redirect()->route('dashboard');
     }
 }
